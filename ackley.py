@@ -4,7 +4,7 @@ import Gnuplot
 import math
 import numpy as np
 
-
+#inicio
 class Cromossomo:
 
     def __init__(self, genes, pai1, pai2, geracao, gerador):
