@@ -1,98 +1,98 @@
-# -*- coding: cp1252 -*-
 import random
-import Gnuplot
-import math
 import numpy as np
+from numpy.random import randn
 
-#
-class Cromossomo:
+class Ackley:
+    def __init__(self, N=30, C1=20, C2=.2, C3=2*np.pi):
+        self.N = N
+        self.c1 = C1
+        self.c2 = C2
+        self.c3 = C3
 
-    def __init__(self, genes, pai1, pai2, geracao, gerador):
-        self.genes = genes
-        self.fitness = fitness(genes)
-        self.pai1 = pai1
-        self.pai2 = pai2
-        self.geracao = geracao
-        self.gerador = gerador
-        
-        
-def iniciar_populacao():
-    final = [30*np.random.random(30)-15 for i in range(100)]
-    for i in range(len(final)):
-        final[i] = Cromossomo(final[i], None, None, 0, 'I')
-    return final        
-        
-def vetor_mutacao(passo):
-    return np.random.normal(0, passo, 30)
+    def f_x(self, x):
+        part1 = -1. * self.c1 * np.exp(
+            -1. * self.c2 * np.sqrt((1./self.N) * sum(map(lambda nb: nb**2, x)))
+            )
+        part2 = -1. * np.exp(
+            (1./self.N) * \
+            sum(map(lambda nb: np.cos(self.c3 * nb), x))
+            )
+        return part1 + part2 + self.c1 + np.exp(1)
 
-def probabilidade_sucesso(m_sucesso, num_mutacoes):
-    return m_sucesso/num_mutacoes
-
-class Estrategia:# tem que iniciar a estrategia evolutiva
-    def __init__(self, passo_mutacao, ajuste):#passo_mutacao = 0.1, ajuste = 0.8
-        self.passo_mutacao = passo_mutacao
-        self.ajuste = ajuste
+class EvolutionStrategy:
+    def __init__(self, generations=5000, population_size=5, mutation_step=0.1, adjust_mutation_constant=0.8):
+        self.generations = generations
+        self.population_size = population_size
+        self.population = []
+        self.f_ackley = Ackley().f_x
+        self.cromossome = None
+        self.mutation_step = mutation_step
+        self.adjust_mutation_constant = adjust_mutation_constant
+        self.success_rate = .2
+        self.num_mutations = 0
+        self.num_successful_mutations = 0
         self.verbose = 0
-        self.num_mutacoes = 0
-        self.m_sucesso = 0
-        self.taxa_sucesso = 0.2
+
+    def print_cromossome(self):
+        for i in range(self.population_size):
+            print self.population[i]
+
+    def init_cromossome(self):
+        for i in range(self.population_size):
+            self.cromossome = 30*np.random.random(30)-15
+            self.population.append(self.cromossome)
+
+    def get_mutation_vector(self):
+        return np.random.normal(0, self.mutation_step, 30)
+
+    def get_success_probability(self):
+        return self.num_successful_mutations / float(self.num_mutations)
+
+
+    def fitness(self, cromossome):
+        return -1.*abs(self.f_ackley(cromossome))
+
+    def adjust_mutation_step(self):
+        ps = self.get_success_probability()
+        if self.verbose == 1:
+            print "ps: %.4f" % ps
+        if ps > self.success_rate:
+            self.mutation_step /= self.adjust_mutation_constant
+        elif ps < self.success_rate:
+            self.mutation_step *= self.adjust_mutation_constant
+        if self.verbose == 1:
+            print "mutation_step: %.4f" % self.mutation_step
+
+    def apply_mutation(self):
+        cromossome_prime = self.cromossome + self.get_mutation_vector()
+        self.num_mutations += 1
+        if self.fitness(self.cromossome) < self.fitness(cromossome_prime):
+            self.cromossome = cromossome_prime
+            self.num_successful_mutations += 1
+        self.adjust_mutation_step()
         
-    
-    def ajustar_passo(self):
-        ps = probabilidade_sucesso(self.m_sucesso, self.num_mutacoes)
-        if ps > self.taxa_sucesso:
-            self.passo_mutacao /= self.ajuste
-        elif ps < self.taxa_sucesso:
-            self.passo_mutacao *= self.ajuste
+    def parent_selection(self, k_parents = 2):
+        return random.sample(self.population, k_parents)
 
-#o calculo do fitness eh feito pelo valor da funcao de ackley
-def fitness(genes):
-    sum1 = 0.0
-    sum2 = 0.0    
-    for g in genes:
-        sum1 += g**2.0
-        sum2 += math.cos(2.0*math.pi*g)
-    n = float(len(genes))
-    return -20.0*math.exp(-0.2*math.sqrt(sum1/n)) - math.exp(sum2/n) + 20.0 + math.e
+    def run(self, verbose=0):
+        self.verbose = verbose
+        self.init_cromossome()
+        gen = 0
+        history = [(self.cromossome, self.f_ackley(self.cromossome))]
+        if self.verbose == 1:
+            print "gen: %d" % gen
+            self.print_cromossome()
+            print "Ackley(x): %.5f" % self.f_ackley(self.cromossome)
+        while gen < self.generations:
+            gen += 1
+            #aqui aplicar a recombinacao
+            self.apply_mutation()
+            if self.verbose == 1:
+                print "gen: %d" % gen
+                self.print_cromossome()
+                print "Ackley(x): %.5f" % self.f_ackley(self.cromossome)
+            history.append((self.cromossome, self.f_ackley(self.cromossome)))
+        return history
 
-
-#a populacao eh iniciada com um vetor que tem valores de float entre -15 e 15
-
-    
-
-
-#ao chamar essa funcao tem que contar o numero de mutacoes e o numero de mutacoes bem sucessedidas
-def mutacao(gene, passo):
-    gene_final = gene + vetor_mutacao(passo)
-    if (gene.fitness) < (fitness(gene_final)):# se a mutacao foi bem sucessedida retorna 1
-        gene.genes = gene_final
-        return 1
-    else:#se nao retorna 0
-        return 0
-
-   
-def main():
-    
-    filho1 = []
-    filho2 = []
-    i = 0
-
-    #inicia a populacao com 100 individuos e os ordena de acordo com o fitness
-    populacao = iniciar_populacao()
-    #ordena os pais de acordo com o fitness
-    populacao.sort(key=lambda p : p.fitness)
-    print(populacao[0].fitness)
-    print(populacao[-1].fitness)
-
-    media = []
-    maximo = []
-    minimo = []
-    
-    #a partir daqui tem que ser feito o laco para poder tentar encontrar a solucao para o problema
-    #while(i <= 100000):
-    
-       
-
-
-if __name__ == '__main__':
-    main()
+es = EvolutionStrategy()
+es.run(verbose = 1)
