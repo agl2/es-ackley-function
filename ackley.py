@@ -107,7 +107,7 @@ class EvolutionStrategy:
         return random.sample(self.population, k_parents)
 
     def apply_recombination(self):
-        #new_population = []
+        new_population = []
         for i in range(self.sons_per_iter):
             parents = self.parent_selection(k_parents = self.k_parents)
             genes_son = np.array(30*[0.])
@@ -117,8 +117,10 @@ class EvolutionStrategy:
                 mutation_step_son += chromossome.mutation_step
             genes_son /= len(parents)
             mutation_step_son /= len(parents)           
-            self.population.append(Chromossome(genes = genes_son, mutation_step = mutation_step_son))
+            new_population.append(Chromossome(genes = genes_son, mutation_step = mutation_step_son))
 
+        for chromossome in new_population:
+            self.population.append(chromossome)
         #if(self.sons_per_iter > 0):
             #self.population = new_population
        
