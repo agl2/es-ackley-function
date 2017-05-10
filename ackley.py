@@ -3,6 +3,7 @@ import random
 import numpy as np
 from numpy.random import randn
 import copy
+import Gnuplot
 
 class Ackley:
     def __init__(self, N=30, C1=20, C2=.2, C3=2*np.pi):
@@ -42,8 +43,9 @@ class Chromossome:
         if ps > success_rate:
             self.mutation_step /= mutation_constant
         elif ps < success_rate:
-            if(self.mutation_step > 0.001):
-                self.mutation_step *= mutation_constant
+            self.mutation_step *= mutation_constant
+            if(self.mutation_step < 0.001):
+                self.mutation_step = 0.001
                 
 
     def mutation_one_fifth(self, mutation_constant):
@@ -52,11 +54,18 @@ class Chromossome:
         if self.fitness() < self.fitness_(genes_prime):
             self.genes = genes_prime
             self.num_successful_mutations += 1
-
-    #Essa mutacao nao funciona, normalmente aumenta o fitness    
+            
     def mutation_delta_exp (self, delta_mutation, n_genes = 30):
-        self.mutation_step *= np.exp(np.random.normal(0, delta_mutation))
-        self.genes += np.random.normal(0, self.mutation_step, n_genes)
+        new_mutation_step = self.mutation_step*np.exp(np.random.normal(0, delta_mutation))
+        
+        if(new_mutation_step < 0.001):
+            new_mutation_step = 0.001
+            
+        new_genes = self.genes + np.random.normal(0, self.mutation_step, n_genes)
+        
+        if(self.fitness() < self.fitness_(new_genes)):
+           self.mutation_step = new_mutation_step
+           self.genes = new_genes
 
     def fitness(self):
         return -1.*abs(self.f_ackley(self.genes))
@@ -66,10 +75,11 @@ class Chromossome:
 
 class prec2float(float):
     def __repr__(self):
-        return "%0.2f" % self
+        return "%0.4f" % self
 
 class EvolutionStrategy:
-    def __init__(self, generations=10000, population_size=30, sons_per_iter = 100, mutation_step=1, mutation_constant=0.8, k_parents = 2, delta_mutation = 0.1826):
+    def __init__(self, generations=1000, population_size=30, sons_per_iter = 200, mutation_step=1, mutation_constant=0.8, k_parents = 2, delta_mutation = 1, \
+                 iter_to_adjust = 30, elitist_suvivor = True, mutation_type = "delta_exp", recombination_type="random"):
         self.generations = generations
         self.population_size = population_size
         self.sons_per_iter = sons_per_iter
@@ -82,12 +92,27 @@ class EvolutionStrategy:
         self.f_ackley = Ackley().f_x
         self.count_adjust = 0
         self.delta_mutation = delta_mutation
+        self.iter_to_adjust = iter_to_adjust
+        
+        if(mutation_type == "one_fifth"):
+            self.elitist_suvivor = True
+        else:
+            self.elitist_suvivor = elitist_suvivor
+        
+        self.mutation_type = mutation_type
+        self.recombination_type = recombination_type
+
+    def print_chromossome(self, chromossome):
+        print "\tGenes: " + str(map(prec2float, chromossome.genes))
+        print "\tPasso de mutação: " + str(prec2float(chromossome.mutation_step))
+        print "\tAckley Value: %.4f" % self.f_ackley(chromossome.genes)
+        if(self.mutation_type == "one_fifth"):
+            print "\tTaxa de sucesso: " + str(chromossome.get_success_probability())
 
     def print_population(self):
         for i in range(len(self.population)):
-            print "Gene " + str(i) + ": " + str(map(prec2float, self.population[i].genes))
-            print "Passo de mutação: " + str(prec2float(self.population[i].mutation_step))
-            print "Taxa de sucesso: " + str(self.population[i].get_success_probability())
+            print "Indivíduo: " + str(i)
+            self.print_chromossome(population[i])
 
     def init_population(self):
         for i in range(self.population_size):
@@ -95,18 +120,26 @@ class EvolutionStrategy:
 
     def apply_mutation(self):
         for i in range(len(self.population)):
-            #self.population[i].mutation_delta_exp(delta_mutation = self.delta_mutation)
-            self.population[i].mutation_one_fifth(self.mutation_constant)
-            if(self.count_adjust > 500):
-                self.population[i].adjust_mutation_step(self.mutation_constant, self.success_rate)
-                self.count_adjust = 0
-            else:
-                self.count_adjust += 1
+            if(self.mutation_type == "delta_exp"):
+                self.population[i].mutation_delta_exp(delta_mutation = self.delta_mutation)
+            elif(self.mutation_type == "one_fifth"):
+                self.population[i].mutation_one_fifth(mutation_constant = self.mutation_constant)
+                if(self.count_adjust > self.iter_to_adjust):
+                    self.population[i].adjust_mutation_step(self.mutation_constant, self.success_rate)
+                    self.count_adjust = 0
+                else:
+                    self.count_adjust += 1
 
     def parent_selection(self, k_parents = 2):
         return random.sample(self.population, k_parents)
 
     def apply_recombination(self):
+        if(self.recombination_type == "mean"):
+            self.mean_recombination()
+        elif(self.recombination_type == "random"):
+            self.random_recombination()
+    
+    def mean_recombination(self):
         new_population = []
         for i in range(self.sons_per_iter):
             parents = self.parent_selection(k_parents = self.k_parents)
@@ -119,11 +152,32 @@ class EvolutionStrategy:
             mutation_step_son /= len(parents)           
             new_population.append(Chromossome(genes = genes_son, mutation_step = mutation_step_son))
 
-        for chromossome in new_population:
-            self.population.append(chromossome)
-        #if(self.sons_per_iter > 0):
-            #self.population = new_population
-       
+
+        if(self.elitist_suvivor):
+            for chromossome in new_population:
+                self.population.append(chromossome)
+        else:
+            self.population = new_population
+
+    def random_recombination(self):
+        new_population = []
+        for i in range(self.sons_per_iter):
+            parents = self.parent_selection(k_parents = self.k_parents)
+            genes_son = []
+            for i in range(len(parents[0].genes)):
+                parent_select = np.random.randint(0,self.k_parents)
+                genes_son.append(parents[parent_select].genes[i])
+                
+            parent_select = np.random.randint(0,self.k_parents)
+            mutation_step_son = parents[parent_select].mutation_step          
+            new_population.append(Chromossome(genes = genes_son, mutation_step = mutation_step_son))
+        if(self.elitist_suvivor):
+            for chromossome in new_population:
+                self.population.append(chromossome)
+        else:
+            self.population = new_population
+
+            
 
     def apply_selection(self):
         self.population.sort(key=lambda chromossome : chromossome.fitness(), reverse=True)	
@@ -134,7 +188,7 @@ class EvolutionStrategy:
         self.init_population()
         self.apply_selection()
         gen = 0
-        history = [(self.population[0].genes, self.f_ackley(self.population[0].genes))]
+        history = [self.population[0]]
         if self.verbose == 1:
             print "=========================================================="
             print "GERAÇÃO: %d" % gen
@@ -152,10 +206,42 @@ class EvolutionStrategy:
                 print "Ackley(x) of best: %.4f" % self.f_ackley(self.population[0].genes)
                 print "Ackley(x) of worst: %.4f" % self.f_ackley(self.population[-1].genes)
                 print "Population length: %d" % len(self.population)
-            history.append((self.population[0].genes,  self.f_ackley(self.population[0].genes)))
+            history.append(self.population[0])
         return history
 
-es = EvolutionStrategy()
-hs = es.run(verbose = 0)
-print "First: " + str(hs[0])
-print "Best: " + str(hs[-1])
+if __name__ == '__main__':
+    es = EvolutionStrategy()
+    hs = es.run(verbose = 0)
+    print "First: "
+    es.print_chromossome(hs[0])
+    print "Best: "
+    es.print_chromossome(hs[-1])
+
+    gplt = Gnuplot.Gnuplot(debug=1)
+
+    gplt.reset()
+    maximo = []
+    passo = []
+    for chrm in hs:
+        maximo.append(chrm.fitness())
+        passo.append(chrm.mutation_step)
+       
+    #mediaData = Gnuplot.Data(media, title='Fitness Médio')
+    #minData = Gnuplot.Data(minimo, title='Fitness Mínimo')
+    maxData = Gnuplot.Data(maximo, title='Fitness Máximo')
+    passoData = Gnuplot.Data(passo, title='Passo do cromossomo')
+
+    gplt('set data style lines')
+    gplt.xlabel('Geracao')
+    gplt.ylabel('Fitness')
+        
+    gplt.plot(maxData)
+    raw_input('Please press return to continue...\n')
+
+    gplt.reset()
+    gplt('set data style lines')
+    gplt.xlabel('Geracao')
+    gplt.ylabel('Passo')
+        
+    gplt.plot(passoData)
+    raw_input('Please press return to continue...\n')
