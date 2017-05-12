@@ -39,13 +39,15 @@ class Chromossome:
         return float(self.num_successful_mutations) / float(self.num_mutations)
 
     def adjust_mutation_step(self, mutation_constant, success_rate):
-        ps = self.get_success_probability()       
+        ps = self.get_success_probability()
+        self.num_mutations = 0
+        self.num_successful_mutations = 0
         if ps > success_rate:
             self.mutation_step /= mutation_constant
         elif ps < success_rate:
             self.mutation_step *= mutation_constant
-            if(self.mutation_step < 0.001):
-                self.mutation_step = 0.001
+            #if(self.mutation_step < 0.001):
+            #   self.mutation_step = 0.001
                 
 
     def mutation_one_fifth(self, mutation_constant):
@@ -58,8 +60,8 @@ class Chromossome:
     def mutation_delta_exp (self, delta_mutation, n_genes = 30):
         new_mutation_step = self.mutation_step*np.exp(np.random.normal(0, delta_mutation))
         
-        if(new_mutation_step < 0.001):
-            new_mutation_step = 0.001
+        if(new_mutation_step < 0.0001):
+            new_mutation_step = 0.0001
             
         new_genes = self.genes + np.random.normal(0, self.mutation_step, n_genes)
         
@@ -78,8 +80,8 @@ class prec2float(float):
         return "%0.4f" % self
 
 class EvolutionStrategy:
-    def __init__(self, generations=1000, population_size=30, sons_per_iter = 200, mutation_step=1, mutation_constant=0.8, k_parents = 2, delta_mutation = 1, \
-                 iter_to_adjust = 30, elitist_suvivor = True, mutation_type = "delta_exp", recombination_type="random"):
+    def __init__(self, generations=10000, population_size=30, sons_per_iter = 2, mutation_step=1, mutation_constant=0.95, delta_mutation = 1, \
+                 iter_to_adjust = 5, elitist_suvivor = False, mutation_type = "delta_exp", recombination_type="random", parent_sel = "global"):
         self.generations = generations
         self.population_size = population_size
         self.sons_per_iter = sons_per_iter
@@ -88,7 +90,7 @@ class EvolutionStrategy:
         self.mutation_constant = mutation_constant
         self.success_rate = .2
         self.verbose = 0
-        self.k_parents = k_parents
+        self.parent_sel = parent_sel
         self.f_ackley = Ackley().f_x
         self.count_adjust = 0
         self.delta_mutation = delta_mutation
@@ -112,7 +114,7 @@ class EvolutionStrategy:
     def print_population(self):
         for i in range(len(self.population)):
             print "Indivíduo: " + str(i)
-            self.print_chromossome(population[i])
+            self.print_chromossome(self.population[i])
 
     def init_population(self):
         for i in range(self.population_size):
@@ -130,47 +132,68 @@ class EvolutionStrategy:
                 else:
                     self.count_adjust += 1
 
-    def parent_selection(self, k_parents = 2):
-        return random.sample(self.population, k_parents)
+    def parent_selection(self):
+        return random.sample(self.population, 2)
 
     def apply_recombination(self):
         if(self.recombination_type == "mean"):
             self.mean_recombination()
         elif(self.recombination_type == "random"):
             self.random_recombination()
-    
+                   
     def mean_recombination(self):
         new_population = []
         for i in range(self.sons_per_iter):
-            parents = self.parent_selection(k_parents = self.k_parents)
-            genes_son = np.array(30*[0.])
-            mutation_step_son = 0
-            for chromossome in parents:
-                genes_son += chromossome.genes
-                mutation_step_son += chromossome.mutation_step
-            genes_son /= len(parents)
-            mutation_step_son /= len(parents)           
+            if(self.parent_sel == "local"):
+                parents = self.parent_selection()
+            genes_son = []
+            for i in range(30):
+                if(self.parent_sel == "global"):
+                    parents = self.parent_selection()
+                parent_select = np.random.randint(0,2)
+                genes_son.append((parents[0].genes[i] + parents[1].genes[i])/2)
+
+            if(self.parent_sel == "global"):
+                parents = self.parent_selection()                
+
+            if(self.mutation_type == "delta_exp"):
+                mutation_step_son = (parents[0].mutation_step + parents[1].mutation_step)/2
+            else:
+                mutation_step_son = 1
+               
             new_population.append(Chromossome(genes = genes_son, mutation_step = mutation_step_son))
-
-
+            
         if(self.elitist_suvivor):
             for chromossome in new_population:
                 self.population.append(chromossome)
         else:
             self.population = new_population
 
+               
     def random_recombination(self):
         new_population = []
         for i in range(self.sons_per_iter):
-            parents = self.parent_selection(k_parents = self.k_parents)
+            if(self.parent_sel == "local"):
+                parents = self.parent_selection()
             genes_son = []
-            for i in range(len(parents[0].genes)):
-                parent_select = np.random.randint(0,self.k_parents)
+            for i in range(30):
+                if(self.parent_sel == "global"):
+                    parents = self.parent_selection()
+                parent_select = np.random.randint(0,2)
                 genes_son.append(parents[parent_select].genes[i])
-                
-            parent_select = np.random.randint(0,self.k_parents)
-            mutation_step_son = parents[parent_select].mutation_step          
+
+            if(self.parent_sel == "global"):
+                parents = self.parent_selection()                
+
+            if(self.mutation_type == "delta_exp"):
+                parent_select = np.random.randint(0,2)
+                mutation_step_son = parents[parent_select].mutation_step
+                mutation_step_son = (parents[0].mutation_step + parents[1].mutation_step)/2
+            else:
+                mutation_step_son = 1
+               
             new_population.append(Chromossome(genes = genes_son, mutation_step = mutation_step_son))
+               
         if(self.elitist_suvivor):
             for chromossome in new_population:
                 self.population.append(chromossome)
@@ -209,7 +232,7 @@ class EvolutionStrategy:
             history.append(self.population[0])
         return history
 
-if __name__ == '__main__':
+def main():
     es = EvolutionStrategy()
     hs = es.run(verbose = 0)
     print "First: "
@@ -245,3 +268,19 @@ if __name__ == '__main__':
         
     gplt.plot(passoData)
     raw_input('Please press return to continue...\n')
+    
+if __name__ == '__main__':
+    #main()
+    es = EvolutionStrategy(population_size = 10, sons_per_iter = 70, elitist_suvivor = False, parent_sel = "local")
+    es.init_population()
+    es.print_population()
+    print('\n')
+    for i in range(1000):
+        es.apply_mutation()
+        #es.apply_recombination()
+        es.apply_selection()
+        es.print_population()
+        print('\n')
+
+    
+    
